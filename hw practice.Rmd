@@ -1,0 +1,505 @@
+---
+title: 'Homework practice 1'
+author: "Anna Tedikova"
+date: '2023-03-11'
+output:
+  html_document:
+    css: style.css
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (foreign) 
+library(dplyr)
+library(gplots)
+library(sjPlot)
+library(MASS)
+library(nortest)
+library(olsrr)
+```
+
+# Data
+
+First, let's load the data.
+```{r}
+#write.csv(ca, "C:/Users/Anna/Documents/R\\database.csv", row.names=FALSE)
+d <- read.csv("C:/Users/Anna/Documents/R/database.csv")
+head(d)
+```
+
+# Part 1
+
+# 1. The dependent variable "Internet trust".
+
+Next, let's create the target variable. It will be called "Internet trust" and composed of `emconlpref1`, `emconlpref2`, `emconlpref3`. We combine those variables as numeric.
+```{r}
+rec_col<- c('emconlpref1', 'emconlpref2', 'emconlpref3')
+d[rec_col] <- sapply(d[rec_col], as.numeric)
+
+d$Int.trust <- rowMeans(d[,c('emconlpref1', 'emconlpref2', 'emconlpref3')], na.rm=TRUE)
+summary(d$Int.trust)
+
+class(d$Int.trust)
+hist(d$Int.trust)
+```
+
+The variable `Int.trust` is numeric, ordinal and has 5 levels: 1 for lowest Internet trust and 5 for highest. The median value in the created variable is 2.67, the mean value is 2.62. There are 1 960 NAs, but considering the general size of the dataset (12 950 cases) it seems not very significant. The distribution of the variable is right-skewed.
+ 
+# 2. Chosen predictors.
+
+I decided to choose variables "Been cyberbullied", "Contact with online friends" and "Life satisfaction" as predictors.
+
+* **Cyber-victim & internet trust**
+
+In one research 2 exploratory studies on those variables were conducted.  Exploratory Study 1 showed that negative experiences of cyber-perpetration predicted low generalized trust. Exploratory Study 2 showed no significant direct relationship, but trust was related to low online privacy concerns and the willingness to self-disclose online was positively related to cyber-victimization. Thus, these studies show mixed evidence - internet trust and cyberbullying can be both negatively and positively correlated. To define the direction of the relationship the causality needs to be checked for [1].  
+
+
+* **Frequency of contact with online friends & internet trust**
+
+One research explored the foundations of trust in online friendships and concluded that there are four main sources of online trust. First, reputation of the online-friend grounded in their pseudonym or offline identity. Second, the behavior of online-friend. Third, pre-commitment, through self-disclosure, which in turn encourages a reciprocal self-disclosure. It can be suggested that the more contact one has with another person online, the more they can observe their behavior, identity, self-disclose, etc. thus internet trust is likely to be elevated as well [2]. 
+
+
+* **Life satisfaction & internet trust**
+
+A study explored the effects of trust on life satisfaction and examined the mediating role of intensity of WeChat (online messenging community) use (IWU) and the perceived usefulness (PU) of WeChat on those effects. Results showed the mediating role of the PU of WeChat on the positive effects of trust in social institutions (like SNS) and IWU on life satisfaction. Trust in institutions exerted a direct and indirect positive effect on life satisfaction. This suggests that life satisfaction is positively correlated to internet trust [3]. I hypothesize that the relationship between the variables will be positive and moderate.
+
+
+# 3. The properties of data. 
+
+Now let us describe the variables that will be used in this analysis.
+
+* Variables used in creating the target variable:
+
+    + `emconlpref1`: numeric and ordinal, levels from 1 to 5 (lowest to highest), median = 3, mean = 2.58
+    + `emconlpref2`: numeric and ordinal, levels from 1 to 5 (lowest to highest), median = 3, mean = 2.65
+    + `emconlpref3`: numeric and ordinal, levels from 1 to 5 (lowest to highest), median = 3, mean = 2.63
+    + variables have 1 978, 2 011, 2 038 NAs respectively, but these amounts seem not very significant as the dataset has 12 950 observations
+
+```{r}
+class(d$emconlpref1)
+summary(d$emconlpref1)
+
+class(d$emconlpref2)
+summary(d$emconlpref2)
+
+class(d$emconlpref3)
+summary(d$emconlpref3)
+```
+
+* Variables chosen as predictors:
+
+    + `cbeenbullied`: numeric and ordinal, levels from 1 to 5 (lowest to highest), median = 1, mean = 1.23
+    + `emconlfreq3`: numeric and ordinal, levels from 1 to 6 (lowest to highest), median = 2, mean = 2.44
+    + `lifesat`: numeric and interval, levels from 0 to 10 (lowest to highest), median = 8, mean = 7.26
+    + variables have 973, 1 148, 609 NAs respectively, but these amounts seem not very significant as the dataset has 12 950 observations
+
+```{r}
+class(d$cbeenbullied)
+summary(d$cbeenbullied)
+
+class(d$emconlfreq3)
+summary(d$emconlfreq3)
+
+class(d$lifesat)
+summary(d$lifesat)
+```
+
+* Control variables:
+
+    + `sex`: integer, nominal and binary, there are 6 364 males and 6 586 females, so the shares by gender are quite equal
+    + `age`: numeric and ratio, the lowest age is 10.75, highest - 16.42, median = 13.5, mean = 13.65
+    + `age` variable has 156 NAs, but it seems very insignificant as the dataset has 12 950 observations
+
+```{r}
+class(d$sex)
+table(d$sex)
+
+class(d$age)
+summary(d$age)
+```
+
+
+# 4. Descriptive statistics for the relationship between the dependent variable and each predictor. 
+
+Next, let's explore the relationships between the variables.
+
+* **`cbeenbullied`**
+
+First, we look at the table distribution of the predictor and the components of tagret variable. It can be seen that there are more people who indicated lower level of being cyber-bullied in all categories of Internet trust.
+
+Next, we recode the variable to a nominal binary with levels "Victim" and "Non-victim" depending on the categories of frequency of experiencing cyberbullying. Then, we check the original variable against the recoded - they seem to match.
+
+Finally, we look at the relationship. According to a mean plot cyber-victims seem to have higher Internet trust than non-victims. Then we run the t-test to better estimate the relationship. Null hypothesis: there is no difference between the victim and non-victim groups' level of Internet trust. The p-value is less than 2.2e-16 so we can reject the null hypothesis - the difference between the groups is statistically significant. The mean of Internet trust in non-victim group is 2.58 while in victim it is 3.31 - this is consistent with the mean plot.
+
+```{r, warning=FALSE}
+table(d$cbeenbullied, d$emconlpref1)
+table(d$cbeenbullied, d$emconlpref2)
+table(d$cbeenbullied, d$emconlpref3)
+
+d$cbeenbullied <- as.numeric(d$cbeenbullied) # only for ifelse recoding 
+d$onlvictim <- ifelse(d$cbeenbullied >= 3, 1, 0)
+d$onlvictim <- dplyr::recode(d$onlvictim, "1" = "Victim", "0" = 'Non-victim')
+table(d$cbeenbullied, d$onlvictim)
+
+plotmeans(Int.trust ~ onlvictim, data = d, 
+          xlab = "cyber-victim", ylab = "internet trust",
+          main="Mean Plot with 95% CI")
+
+t.test(d$Int.trust ~ d$onlvictim)
+```
+
+* **`emconlfreq3`**
+
+First, we look at the table distribution of the predictor and the components of tagret variable. It can be seen that there are more people who indicated lower Internet trust and less frequent contact with online-friends.
+
+Next, we recode the variable to a nominal binary with levels "Often" and "Rare" depending on the categories of frequency of contacting online-friends. Then, we check the original variable against the recoded - they seem to match.
+
+Finally, we look at the relationship. According to a mean plot those who have often contacts seem to have higher Internet trust than those with rare contacts. Then we run the t-test to better estimate the relationship. Null hypothesis: there is no difference between the 'often' and 'rare' groups' level of Internet trust. The p-value is less than 2.2e-16 so we can reject the null hypothesis - the difference between the groups is statistically significant. The mean of Internet trust in 'often' group is 3.07 while in 'rare' it is 2.33 - this is consistent with the mean plot.
+
+```{r, warning=FALSE}
+table(d$emconlfreq3, d$emconlpref1)
+table(d$emconlfreq3, d$emconlpref2)
+table(d$emconlfreq3, d$emconlpref3)
+
+d$emconlfreq3 <- as.numeric(d$emconlfreq3)
+d$onlfriends <- ifelse(d$emconlfreq3 >= 3, 1, 0)
+d$onlfriends <- dplyr::recode(d$onlfriends, "1" = "Often", "0" = "Rare")
+table(d$emconlfreq3, d$onlfriends)
+
+plotmeans(Int.trust ~ onlfriends, data = d, 
+          xlab = "online friends contact", ylab = "internet trust",
+          main="Mean Plot with 95% CI")
+
+t.test(d$Int.trust ~ d$onlfriends)
+```
+
+* **`lifesat`**
+
+First, we look at the table distribution of the predictor and the components of tagret variable. It can be seen that there are more people who indicated higher life satisfaction in all categories of Internet trust.
+
+Next, we rename the variable for convenience.
+
+Next, we look at the relationship and run the correlation test to better estimate the relationship. Null hypothesis: there is no relationship between life satisfaction and Internet trust. The p-value is less than 2.2e-16 so we can reject the null hypothesis - there is a statistically significant relationship. The correlation coefficient is -0.21  which means that the relationship is weak and negative (the higher the life satisfaction the lower the Internet trust).
+
+```{r}
+table(d$lifesat, d$emconlpref1)
+table(d$lifesat, d$emconlpref2)
+table(d$lifesat, d$emconlpref3)
+
+d$ls <- d$lifesat
+
+cor.test(d$Int.trust, d$ls)
+```
+
+* **control variables**
+
+First, we run a t-test for `sex`. The p-value = 0.0009384, i.e. it is less than 0.05 so we can reject the null hypothesis - the difference between the groups is statistically significant. The mean of Internet trust of males is 2.58 while for females it is 2.66 - thus women in the sample tend to have higher Internet trust.
+
+```{r}
+t.test(d$Int.trust ~ d$sex)
+```
+ 
+Next, we run the correlation test for `age`. The p-value is less than 2.2e-16 so we can reject the null hypothesis - there is a statistically significant relationship. The correlation coefficient is 0.21  which means that the relationship is weak and positive (the higher the age the higher the Internet trust).
+
+```{r}
+cor.test(d$Int.trust, d$age)
+```
+
+# Part 2
+
+# 1. Regression analysis.
+
+We begin by creating the dataset for regression models and include our target, control variables and predictors. There are 6 variables and 12 950 observations. We then count NAs - there is approximately the same amount as we have seen previously. After omitting NAs we have 10 931 observations.
+
+```{r}
+m <- dplyr::select(d, c(Int.trust, sex, age, onlvictim, onlfriends, ls))
+dim(m) 
+
+sapply(m, function(x) sum(is.na(x)))
+md <- na.omit(m)
+dim(md) 
+```
+
+* **Model 1**
+
+We start by adding control variables and `onlfriends`. All predictors seem to be significant.
+
+   + intercept: if the person is male, aged 0 and has rare contact with online friends their Internet trust is 1.02.
+   + `sex`: the baseline category is male (1), so the Internet trust of women compared to men is 0.14 points higher.
+   + `age`: with each point for age the Internet trust rises by 0.14.
+   + `onlfriends`: the baseline category is "Often", so the Internet trust of those who have rare contacts compared to those who have often contacts is 0.67 points lower.
+
+The R^2 for the model is 0.113 and the adjusted R^2 is 0.1128 - the model explains 11% of the variation. This is not a great but an okay estimate for social data.
+
+```{r}
+m1 <- lm(Int.trust ~ as.character(sex) + age + onlfriends, md)
+summary(m1)
+```
+
+* **Model 2**
+
+We add `ls` to the previous model. All predictors seem to be significant.
+
+   + intercept: if the person male, aged 0, has frequent contact with online-friends and their life satisfaction is 0 their Internet trust is 1.98.
+   + `sex`: the baseline category is male (1), so the Internet trust of women compared to men is 0.07 points higher.
+   + `age`: with each point for age the Internet trust rises by 0.13.
+   + `onlfriends`: the baseline category is "Often", so the Internet trust of those who have rare contacts compared to those who have often contacts is 0.62 points lower.
+   + `ls`: with each point for life satisfaction the Internet trust falls by 0.10.
+
+The R^2 for the model is 0.1383 and the adjusted R^2 is 0.138 - the model explains 14% of the variation. This is not a great estimate but slightly better than the previous model.
+
+```{r}
+m2 <- lm(Int.trust ~ as.character(sex) + age + onlfriends + ls, md)
+summary(m2)
+```
+
+* **Model 3**
+
+We add `onlvictim` to the previous model. All predictors seem to be significant.
+
+   + intercept: if the person is male, aged 0, has frequent contact with online-friends, has life satisfaction at 0  and is non-victim their Internet trust is 1.86.
+   + `sex`: the baseline category is male (1), so the Internet trust of women compared to men is 0.07 points higher.
+   + `age`: with each point for age the Internet trust rises by 0.13.
+   + `onlfriends`: the baseline category is "Often", so the Internet trust of those who have rare contacts compared to those who have often contacts is 0.60 points lower.
+   + `ls`: with each point for life satisfaction the Internet trust falls by 0.097.
+   + `onlvictim`: the baseline category is "Non-victim", so the Internet trust of victims compared to non-victims is 0.43 points higher.
+
+The R^2 for the model is 0.1436 and the adjusted R^2 is 0.1432 - the model explains 14% of the variation. This estimate is very similar to the previous model.
+
+```{r}
+m3 <- lm(Int.trust ~ as.character(sex) + age + onlfriends + ls + onlvictim , md)
+summary(m3)
+```
+
+* **Best model**
+
+Next let's compare the model using anova. The 2nd and 3rd models have p-values smaller than 0.05 so we can reject the null hypothesis i.e. the difference between the models is statistically significant. Thus, models 2 and 3 are better than model 1. However, taking into account the adjusted R^2 of those two models there does not seem to be much difference between them. Therefore, I decided to use model 2 as it has a rather good variance explanation and there are fewer predictors, so it can be more convenient to analyze.
+
+```{r}
+anova(m1, m2, m3)
+```
+
+# 2. Interaction effect.
+
+One study discovered that SNS involvement (chatting with online friends) positively influences information sharing (a.k.a Internet trust) and social life satisfaction. In addition, information sharing positively affects relationship quality, which in turn is positively related to social life satisfaction [4]. This suggests that there can be a connection between frequency of contacts with online friends and life satisfaction.
+
+We create a model where `onlfriends` and `ls` interact. All predictors seem to be significant except for the interaction effect - its p-value is 0.55635.
+
+   + intercept: if the person is male, aged 0, has frequent contact with online-friends and indicated life satisfaction at 0 their Internet trust is 1.94.
+   + `sex`: the baseline category is male (1), so the Internet trust of women compared to men is 0.07 points higher.
+   + `age`: with each point for age the Internet trust rises by 0.13.
+   + `onlfriends`: the baseline category is "Often", so the Internet trust of those who have rare contacts compared to those who have often contacts is 0.67 points lower.
+   + `ls`: with each point for life satisfaction the Internet trust falls by 0.11.
+
+The R^2 for the model is 0.1384 and the adjusted R^2 is 0.1379 - the model explains 14% of the variation. This estimate is very similar to model 2 and is even slightly smaller.
+
+```{r}
+m4 <- lm(Int.trust ~ as.character(sex) + age + onlfriends * ls, md)
+summary(m4)
+sjPlot::plot_model(m4, type="pred", terms = c("ls", "onlfriends"))
+```
+
+If we compare model 2 and model 4 (interaction) we will see that the interaction effect does not enhance the model. Model 4's p-value is 0.5563 which is bigger than 0.05 and thus we cannot reject the null hypothesis i.e. the difference between the models is not statistically significant.
+
+```{r}
+anova(m2, m4)
+```
+
+# 3. Model diagnostics. 
+
+Model 2 was chosen as the final model and the diagnostics will be performed for it.
+
+## 3.1 Linearity of the Data
+
+The linearity assumption can be checked by inspecting the Residuals vs Fitted plot. There is no pattern in the residual plot and red and grey lines are close. This suggests that we can assume linear relationship between the predictors and the outcome variables.
+
+```{r}
+plot(m2, 1)
+```
+
+Lambda is about 0.5. We can try to use sqrt-transformation and see if it makes the model better.
+
+```{r}
+boxcox(m2)
+```
+
+## 3.2 Residual's distribution
+
+Next we need to check if the errors of the model are normally distributed.
+
+* *histogram*
+
+From the plot we can see that the distribution is not bell-shaped and is somewhat skewed - so the distribution is not normal.
+
+```{r}
+# 1: 
+hist (m2$residuals, breaks = 20)
+```
+
+* *Q-Q plot*
+
+Next we look at the Q-Q plot. Most of the points are on the line or very close to it, there are some over the line and some under the line so it is not clear which transformation is better to use.
+
+```{r}
+# 2: 
+car::qqPlot(m2, main="Q-Q Plot") # over the line - log, under the line - quadratic
+```
+
+Next we run Shapiro-Wilk normality test (the null hypothesis of a normal distribution). The p-value is < 2.2e-16, so we can reject the null hypothesis - the distribution of residuals is not normal.
+
+```{r}
+# 3: 
+ad.test(m2$residuals)
+```
+
+Bonferroni p-value is NA - this means that no outliers were detected.
+
+```{r}
+# 4:
+car::outlierTest(m2, n.max = 10)
+```
+
+### 3.2.1 Antidotes
+
+As the residuals distribution is not normal and lambda is about 0.5, we can try using sqrt-transformation for the dependent variable.
+
+After the sqrt-transformation R^2 became 0.1151 and adjusted R-squared - 0.1149, i.e. the model now explains 11.5% of the variance. This is worse than the model without sqrt-transformation.
+
+```{r}
+m5 <- lm(sqrt(Int.trust) ~ as.character(sex) + age + onlfriends, md) 
+summary(m5)
+```
+
+Next we analyze the residuals of the new model. If we look at the Q-Q plot, more points are now driven away from the main line. In the histogram the distribution is even less normal: it looks more left-skewed and even close to bimodal. According to the Anderson-Darling normality test, the distribution is not normal as well: p-value is less than 2.2e-16, so we can reject the null hypothesis of a normal distribution.
+
+```{r}
+car::qqPlot(m5, main="Q-Q Plot")
+hist (m5$residuals, breaks = 20)
+ad.test(m5$residuals)
+```
+
+Overall the sqrt-transformation did not make the model better and even somewhat worsened it, so we may dismiss this transformation altogether.
+
+## 3.3 Outliers - Leverages
+
+We also need to look for the outliers in the data and if there are any leverages - influential outliers which significantly affect the model.
+
+First, we use hat values. From the plot we can see that there are several dozens of problematic values - they are located above the second dotted line. However, our sample contains over 10 000 observations so a few dozens of influential outliers seem okay.
+
+```{r}
+# hatvalues
+plot(hatvalues(m2)) 
+abline(h=c(2,3)*5/10391,lty=2) #(2,3)*((k+1)/n), k - number of IVs (number of beta-coefficients), n - sample size,
+#1 - for intercept
+text(hatvalues(m2), labels = rownames(md),  cex = 0.5) # rownames(UniqueID)
+```
+
+Next, let's see Cook's Distance. From the plot we can see that the situation is pretty similar to the hat values, however there are even less problematic observations, but they seem to be the same as before.
+
+```{r}
+plot(cooks.distance(m2))
+#Critical value is calculated using the following formula:
+#4/(n-k-1), where 
+#k - number of IVs (number of beta-coefficients), 
+#n - sample size, 
+#1 - for intercept
+abline(h=4/(10391-4-1), lty=2)
+text(cooks.distance(m2), labels = rownames(md), cex = 0.5)
+```
+
+If we combine Cook's Distance and hat values we will get the following plot. The most problematic cases are the biggest nodes in the upper and lower right squares. There seem to be no nodes in the upper right square, while there are some big ones in the lower right square. Again, they seem to be the same observations as before and there is about a couple of dozens of them - compared to the sample size we can decide to leave them in the dataset.
+
+```{r}
+##1. Let's plot hat values vs standardized residuals
+plot(hatvalues(m2), rstudent(m2), type='n')
+##2. Set the thresholds for residuals
+abline(h=c(-2, 2), lty=2, lwd = 2, col = 'red')
+##3. Set thresholds for leverages
+abline(v=c(2,3)*5/10391, lty=2, lwd = 2, col = 'red')
+##4. Now let's plot the observations using Cook's distance as a measure of the node size
+cook <- sqrt(cooks.distance(m2))
+points(hatvalues(m2), rstudent(m2), cex=10*cook/max(cook))
+text(hatvalues(m2), rstudent(m2), rownames(md), cex = 0.5)
+```
+
+## 3.4 Heteroscedasticity
+
+Let's first visualize the residuals. We can see that the red line is quite straight and horizontal. The spread around the red line seems to vary with the fitted values. This can indicate the residuals' heteroscedasticity.
+
+```{r}
+plot(m2, 3)
+```
+
+To check this assumption more formally we run the Breusch-Pagan test. Null hypothesis: homoscedasticity in our residuals. The test shows p-value of 0.0050454 which is smaller than 0.05 and thus we can reject the null hypothesis - our residuals have heteroscedasticity.
+
+```{r}
+# Breusch-Pagan test
+car::ncvTest(m2)
+```
+
+## 3.5 Multicollinearity
+
+We also need to see if any of our predictors have multicolinearity. GVIF estimates are all smaller than 4 and GVIF^(1/(2*Df)) estimates are all less than 2, so we can say that there is no multicolinearity. This is expected as we used a model with no interaction effect.
+
+```{r, message=FALSE}
+car::vif(m2, type="predictor")
+```
+
+## 3.6 Antidotes. Fix the model
+
+Overall, we found the following problems in our model:
+
+* Non-normal distribution of residuals
+* Heteroscedasticity of residuals
+* Some significant outliers
+
+Earlier, we have tried using sqrt-transformation for the dependent variable which did not really help. We can try using power transformation, log and squared (^2) transformation for the dependent variable and compare the residual plots.
+
+It can be seen from the plots that the initial model seems to be the best - there the residuals lie closest to the trend line and the layout of the points is the straightest one.
+
+```{r}
+YJ <- car::powerTransform(md$Int.trust ~ as.character(md$sex) + md$age + md$onlfriends + md$ls, family = "yjPower")
+YTransf <- car::yjPower(U = md$Int.trust, 
+                        lambda = YJ$lambda)
+par(mfrow = c(1, 4))
+plot(lm(md$Int.trust ~ as.character(md$sex) + md$age + md$onlfriends + md$ls), 2) #the initial model is the best
+plot(lm(YTransf ~ as.character(md$sex) + md$age + md$onlfriends + md$ls), 2)
+plot(lm(log(md$Int.trust) ~ as.character(md$sex) + md$age + md$onlfriends + md$ls), 2) 
+plot(lm((md$Int.trust)^2 ~ as.character(md$sex) + md$age + md$onlfriends + md$ls), 2)
+```
+
+# Conclusion
+
+In the beginning of the project a number of hypotheses were set. Let's revisit them and see which were supported.
+
+* **Cyber-victim & internet trust**
+
+We had a mixed hypothesis - internet trust and cyberbullying can be both negatively and positively related. We have found that for our sample the relationship was that victims had higher Internet trust, however, the predictor had weak explanatory power when used in the model. Thus, we can say that the hypothesis was partially supported.
+
+* **Frequency of contact with online friends & internet trust**
+
+The hypothesis was that the frequency of contact with online friends and Internet trust are positively related, which was the case in our model. 
+
+* **Life satisfaction & internet trust**
+
+We hypothesized that life satisfaction is positively correlated to internet trust. This was refuted - in our model the relationship was negative. 
+
+* **Interaction effect**
+
+It was suggested that there can be a connection between frequency of contacts with online friends and life satisfaction. However, the interaction effect was statistically insignificant and thus this hypothesis was refuted.
+
+* **Explanatory power**
+
+The highest R^2 we had was 14% which is a rather low estimate, so none of our predictors had great explanatory power. Even with the interaction effect this estimate did not rise (~14%) and the recommended sqrt-transformation did not enhance it either (11.5%)
+
+# Resources:
+
+[1] Pieschl, Stephanie and Porsch, Torsten. ‘The Complex Relationship Between Cyberbullying and Trust’. 1 Jan. 2017 : 9 – 17. <https://content.iospress.com/articles/international-journal-of-developmental-science/dev160208>
+
+[2] Henderson, S., & Gilding, M. (2004). ‘I’ve Never Clicked this Much with Anyone in My Life’: Trust and Hyperpersonal Communication in Online Friendships. New Media & Society, 6(4), 487–506. <https://doi.org/10.1177/146144804044331>
+
+[3] Bi Li, Yan Wu, Zhifeng Hao, Xueming Yan, Boyu Chen, The effects of trust on life satisfaction in the context of WeChat use, Telematics and Informatics, Volume 42, 2019, 101241, ISSN 0736-5853, <https://doi.org/10.1016/j.tele.2019.101241.>
+
+[4] Dang, V.T. (2021), "Social networking site involvement and social life satisfaction: the moderating role of information sharing", Internet Research, Vol. 31 No. 1, pp. 80-99. <https://doi.org/10.1108/INTR-04-2019-0167>
